@@ -9,18 +9,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# تحسين المظهر بدعم اللغة العربية واتجاه النص من اليمين لليسار
+# تحسين المظهر بدعم اللغة العربية واتجاه النص
 st.markdown("""
     <style>
     body, [data-testid="stSidebar"] {
         direction: rtl;
         text-align: right;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -28,15 +22,20 @@ st.markdown("""
 st.title("🩺 منظومة إدارة القوى العاملة لفنيي المعامل")
 st.caption("إدارة بئر العبد الصحية – قسم المتوطنة | إعداد وتصميم: أحمد مسعد رشاد")
 
-# اسم ملف الإكسيل المتوقع
 FILE_NAME = "منظومة_إدارة_القوى_العاملة_احمد_مسعد_رشاد.xlsx"
 
 @st.cache_data
 def load_data():
     try:
-        # قراءة البيانات من الشيت الرئيسي
         df_emp = pd.read_excel(FILE_NAME, sheet_name="cheet1")
         df_units = pd.read_excel(FILE_NAME, sheet_name="الوحدات")
+        
+        # تنظيف مسافات النصوص في أسماء الوحدات
+        if 'الوحدة' in df_emp.columns:
+            df_emp['الوحدة_النظيفة'] = df_emp['الوحدة'].astype(str).str.strip()
+        if 'الوحدة' in df_units.columns:
+            df_units['الوحدة_النظيفة'] = df_units['الوحدة'].astype(str).str.strip()
+
         return df_emp, df_units
     except Exception as e:
         st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
@@ -45,12 +44,10 @@ def load_data():
 df_emp, df_units = load_data()
 
 if df_emp is not None and df_units is not None:
-    # تنظيف البيانات السريع
-    df_units_clean = df_units[df_units['الوحدة'] != 'الاجمالى'].dropna()
+    df_units_clean = df_units[df_units['الوحدة_النظيفة'] != 'الاجمالى'].dropna(subset=['الوحدة'])
 
-    # --- 1. كروت المؤشرات الرئيسية (KPIs) ---
+    # --- 1. كروت المؤشرات الرئيسية ---
     col1, col2, col3 = st.columns(3)
-    
     total_employees = len(df_emp)
     total_units = len(df_units_clean)
     
@@ -60,44 +57,51 @@ if df_emp is not None and df_units is not None:
 
     st.divider()
 
-    # --- 2. الرسوم البيانية التفاعلية ---
+    # --- 2. الرسم البياني ---
     st.subheader("📊 توزيع الموظفين حسب الوحدات الصحية")
-    
     fig_units = px.bar(
         df_units_clean, 
         x="الوحدة", 
         y="عدد الموظفين",
         text_auto=True,
         color="عدد الموظفين",
-        color_continuous_scale="Blues",
-        title="توزيع القوى العاملة على الوحدات"
+        color_continuous_scale="Blues"
     )
     fig_units.update_layout(xaxis_tickangle=-45, showlegend=False)
     st.plotly_chart(fig_units, use_container_width=True)
 
     st.divider()
 
-    # --- 3. البحث وتصفية بيانات الموظفين ---
-    st.subheader("🔍 البحث والتصفية")
+    # --- 3. البحث والتصفية ---
+    st.subheader("🔍 البحث وتصفية الفنيين")
     
-    search_unit = st.selectbox(
-        "اختر الوحدة الصحية لعرض الموظفين:", 
-        options=["الكل"] + list(df_units_clean['الوحدة'].dropna().unique())
-    )
+    # جلب أسماء الوحدات الفعلية المسجلة لدى الموظفين لتفادي أي اختلاف
+    available_units = sorted(list(df_emp['الوحدة_النظيفة'].dropna().unique()))
     
-    search_name = st.text_input("أو ابحث باسم الموظف / الرقم القومي:")
+    col_search1, col_search2 = st.columns(2)
+    
+    with col_search1:
+        search_unit = st.selectbox(
+            "اختر الوحدة الصحية:", 
+            options=["الكل"] + available_units
+        )
+        
+    with col_search2:
+        search_name = st.text_input("أو ابحث باسم الموظف / الرقم القومي:")
 
     # تطبيق التصفية
     filtered_df = df_emp.copy()
     
     if search_unit != "الكل":
-        filtered_df = filtered_df[filtered_df['الوحدة'] == search_unit]
+        filtered_df = filtered_df[filtered_df['الوحدة_النظيفة'] == search_unit]
         
     if search_name:
         filtered_df = filtered_df[
             filtered_df['الإسم'].astype(str).str.contains(search_name, case=False, na=False) | 
             filtered_df['الرقم القومي'].astype(str).str.contains(search_name, case=False, na=False)
         ]
+
+    st.write(f"عدد النتائج: **{len(filtered_df)}** فني")
 
     # عرض الجدول
     st.dataframe(
